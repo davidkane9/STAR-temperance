@@ -1,0 +1,222 @@
+---
+title: "Temperance and Tennessee STAR"
+format: html
+execute: 
+  echo: false
+---
+
+```{r}
+#| message: false
+
+library(tidyverse)      
+library(gt)             
+library(tidymodels)     
+library(broom)          
+library(marginaleffects) 
+library(easystats)   
+
+x <- read_csv("https://raw.githubusercontent.com/PPBDS/bootcamp/refs/heads/master/_internal/data/STAR.csv",
+              show_col_types = FALSE) |> 
+  mutate(kind = recode(classtype,
+                      `1` = "small",
+                      `2` = "regular",
+                      `3` = "regular with aid")) |> 
+  mutate(race = recode(race,
+                      `1` = "white",
+                      `2` = "black",
+                      `3` = "others",
+                      `4` = "others",
+                      `5` = "others",
+                      `6` = "others")) |> 
+  select(g4math, kind, race, yearssmall) 
+```
+
+Note: Since there were very few data points for both "Hispanic" and "Other" students, we have combined these groups into a single "Others" category. Going forward, our analysis will use three race categories: ""White", "Black", and "Others".
+
+### Data Summary
+
+> The Tennessee STAR dataset comes from a landmark randomized controlled experiment conducted in the 1980s to study the impact of class size on student achievement in early elementary school. Over 6,000 students in approximately 80 Tennessee schools were randomly assigned to one of three classroom settings from kindergarten through third grade: small classes (13–17 students), regular-sized classes (22–25 students), or regular-sized classes with a teacher’s aide. Students’ academic performance was tracked over several years, with a particular focus on standardized test scores in reading and mathematics. This dataset allows us to investigate how reducing class size affects academic outcomes and whether these effects differ by student characteristics such as race or socioeconomic status.
+
+### Scenarios
+
+1) Imagine that you are an elementary school principal in Chicago. You want to predict student performance. Fortunately, you have data today for your current students like the data available in the STAR project. (Predictive)
+
+
+```{r}
+tibble(
+  ID = c("1", "2", "...", "10", "11", "...", "N"),
+  score_predicted = c("715", "684", "...", "698", "710", "...", "669"),
+  kind = c("small", "regular", "...", "small", "regular with aid", "...", "small"),
+  race = c("white", "black", "...", "black", "white", "...", "black"),
+  sex = c("female", "male", "...", "male", "female", "...", "female")
+)|>
+  gt() |>
+  tab_header(title = "Preceptor Table: Predicted 4th Grade Math Scores for 2029 in Chicago") |>
+  cols_label(
+    ID = md("ID"),
+    score_predicted = md("Predicted Math Score"),
+    kind = md("Class Type"),
+    race = md("Race"),
+    sex = md("Sex")
+  ) |>
+  tab_spanner(label = "Predicted Outcomes", columns = c(score_predicted)) |>
+  tab_spanner(label = "Covariates", columns = c(kind, race, sex)) |>
+  cols_align(align = "center", columns = everything()) |>
+  cols_align(align = "left", columns = c(ID)) |>
+  fmt_markdown(columns = everything())
+```
+
+
+```{r}
+tibble(
+  source = c("Data", "Data", "...", "Preceptor Table", "Preceptor Table", "..."),
+  year = c("1985", "1985", "...", "2029", "2029", "..."),
+  location = c("Tennessee", "Tennessee", "...", "Chicago", "Chicago", "..."),
+  ID = c("1", "2", "...", "10", "11", "..."),
+  score_observed = c("715", "684", "...", "?", "?", "..."),
+  kind = c("small", "regular", "...", "small", "regular with aid", "..."),
+  race = c("white", "black", "...", "black", "white", "..."),
+  sex = c("female", "male", "...", "male", "female", "...")
+) |>
+  gt() |>
+  tab_header(title = "Population Table: Predicting 4th Grade Math Scores by Student and Class Type for Chicago in 2029") |>
+  cols_label(
+    source = md("Source"),
+    year = md("Year"),
+    location = md("Location"),
+    ID = md("ID"),
+    score_observed = md("Math Score"),
+    kind = md("Class Type"),
+    race = md("Race"),
+    sex = md("Sex")
+  ) |>
+  tab_spanner(label = "Unit & Time", columns = c(year, location, ID)) |>
+  tab_spanner(label = "Outcomes", columns = c(score_observed)) |>
+  tab_spanner(label = "Covariates", columns = c(kind, race, sex)) |>
+  fmt_markdown(columns = everything()) |>
+  cols_align(align = "center", columns = everything()) |>
+  cols_align(align = "left", columns = c(source))
+```
+
+2) Imagine you work for the Texas Department of Education. You want to understand student performance in small classes, relative to big classes, in Dallas. In Texas, there is data available like the data in the STAR project. (Causal)
+
+
+```{r}
+tibble(
+  ID = c("1", "2", "...", "10", "11", "...", "N"),
+  math_if_small = c("740", "701*", "...", "730", "720*", "...", "695*"),
+  math_if_regular = c("725*", "689", "...", "715*", "702", "...", "680*"),
+  math_if_regular_aid = c("728*", "695*", "...", "719*", "715*", "...", "684"),
+  treatment = c("Small", "Regular", "...", "Small", "Regular", "...", "Regular with aid")
+) |>
+  gt() |>
+  tab_header(title = "Preceptor Table: Dallas, TX, 2025: Potential Math Scores Under Each Class Type Assignment") |>
+  cols_label(
+    ID = md("ID"),
+    math_if_small = md("Math if Small Class"),
+    math_if_regular = md("Math if Regular Class"),
+    math_if_regular_aid = md("Math if Regular w/ Aid"),
+    treatment = md("Assigned Class Size")
+  ) |>
+  tab_spanner(label = "Potential Outcomes", columns = c(math_if_small, math_if_regular, math_if_regular_aid)) |>
+  cols_align(align = "center", columns = everything()) |>
+  cols_align(align = "left", columns = c(ID)) |>
+  fmt_markdown(columns = everything()) |>
+  tab_footnote(
+    footnote = md("A * indicates a potential outcome which we do not observe for that student."),
+    locations = cells_column_spanners(spanners = "Potential Outcomes")
+  )
+```
+
+
+```{r}
+tibble(
+  source = c("Data", "Data", "...", "Preceptor Table", "Preceptor Table", "..."),
+  year = c("1985", "1985", "...", "2025", "2025", "..."),
+  location = c("Tennessee", "Tennessee", "...", "Dallas, TX", "Dallas, TX", "..."),
+  ID = c("1", "2", "...", "10", "11", "..."),
+  math_if_small = c("740*", "701", "...", "730", "720*", "..."),
+  math_if_regular = c("725", "689*", "...", "715*", "702", "..."),
+  math_if_regular_aid = c("728*", "695*", "...", "719*", "715*", "..."),
+  assigned_class = c("Regular", "Small", "...", "Small", "Regular", "...")
+) |>
+  gt() |>
+  tab_header(title = "Population Table: Dallas, TX (2025) — Potential 4th Grade Math Scores by Class Assignment") |>
+  cols_label(
+    source = md("Source"),
+    year = md("Year"),
+    location = md("Location"),
+    ID = md("ID"),
+    math_if_small = md("Math if Small Class"),
+    math_if_regular = md("Math if Regular Class"),
+    math_if_regular_aid = md("Math if Regular w/ Aid"),
+    assigned_class = md("Assigned Class Size")
+  ) |>
+  tab_spanner(label = "Unit & Time", columns = c(year, location, ID)) |>
+  tab_spanner(label = "Potential Outcomes", columns = c(math_if_small, math_if_regular, math_if_regular_aid)) |>
+  tab_spanner(label = "Covariates", columns = c(assigned_class)) |>
+  fmt_markdown(columns = everything()) |>
+  cols_align(align = "center", columns = everything()) |>
+  cols_align(align = "left", columns = c(source)) |>
+  tab_footnote(
+    footnote = md("A * indicates a potential outcome which we do not observe for that student."),
+    locations = cells_column_spanners(spanners = "Potential Outcomes")
+  )
+```
+
+### Data Generating Mechanism
+
+Fit a linear regression model in which math score (`g4math`) is the outcome, and the predictors are class type (`kind`), race, and years spent in small classes (`yearssmall`). Fit this model to an object named `fit_cs`.
+
+```{r}
+
+```
+
+After fitting the model, run `fit_cs` and be sure to display the confidence intervals. 
+
+```{r}
+
+```
+
+Give the R code you used to fit your regression model to AI and ask it to create a LaTeX version of the regression equation that matches your model. Paste the LaTeX equation from AI below.
+
+
+## Marginal Effects
+
+Start writing summary paragraph. (AI may be helpful for individual sentences but won't give you a paragraph at once.)
+
+Generate predicted scores for all students in the data. What does each row in the output represent?
+
+Generate predictions by class type (`kind`). 
+
+Visualize average predicted math score by class type using `plot_predictions()`.
+
+
+The default `plot_predictions()` plots can be boring or hard to read. To create your own custom plot, start by extracting the prediction data using the `draw = FALSE` option. Save the resulting tibble as `pred_data`. Run `pred_data` to see the output.
+
+Give AI the output of `pred_data` and ask it to make a nice looking plot. Make sure that it has an accurate title, subtitle, axis labels, and caption. Paste your plot in the code chunk below.
+
+
+What does this plot tell you about the effect of class types on student `g4math` scores?
+
+
+Start experimenting with more detailed plots. Visualize predicted math scores by class type and race. Just use the basic `plot_predictions()` for now.
+
+
+Now use `plot_predictions()` with `draw = FALSE` to get the raw predictions by class type. Save the resulting tibble as `pred_data2`. Run `pred_data2` to see the output. 
+
+
+Take the output from `pred_data2` and provide it to AI. Ask it to make a high-quality plot with a descriptive title, subtitle, caption, and labels. Paste your new plot below: 
+
+After finalizing your summary paragraph, paste it in the section below:
+
+
+## More Information
+
+Frederick Mosteller (1995) “The Tennessee study of class size in the early school grades.” The Future of Children, vol. 5, no. 2, pp. 113–127. Data cleaned and discussed in "Quantitative Social Science: An Introduction" by Kosuke Imai.
+
+> The Tennessee class size project is a three-phase study designed to determine the effect of smaller class size in the earliest grades on short-term and long-term pupil performance. The first phase of this project, termed Project STAR (for Student-Teacher Achievement Ratio), was begun in 1985, when Lamar Alexander was governor of Tennessee. Governor Alexander, who later served as secretary of education in the cabinet of President George Bush, had made education a top priority for his second term.
+
+> The legislature and the educational community of Tennessee were mindful of a promising study of the benefits of small class size carried out in nearby Indiana, but were also aware of the costs associated with additional classrooms and teachers. Wishing to obtain data on the effectiveness of reduced class size before committing additional funds, the Tennessee legislature authorized this four-year study in which results obtained in kindergarten, first, second, and third grade classrooms of 13 to 17 pupils were compared with those obtained in classrooms of 22 to 25 pupils and in classrooms of this larger size where the teacher was assisted by a paid aide. Both standardized and curriculum-based tests were used to assess and compare the performance of some 6,500 pupils in about 330 classrooms at approximately 80 schools in the areas of reading, mathematics, and basic study skills. After four years, it was clear that smaller classes did produce substantial improvement in early learning and cognitive studies and that the effect of small class size on the achievement of minority children was initially about double that observed for majority children, but in later years, it was about the same.
+
+> The second phase of the project, called the Lasting Benefits Study, was begun in 1989 to determine whether these perceived benefits persisted. Observations made as a part of this phase confirmed that the children who were originally enrolled in smaller classes continued to perform better than their grade-mates (whose school experience had begun in larger classes) when they were returned to regular-sized classes in later grades. Under the third phase, Project Challenge, the 17 economically poorest school districts were given small classes in kindergarten, first, second, and third grades. These districts improved their end-of-year standing in rank among the 139 districts from well below average to above average in reading and mathematics. This article briefly summarizes the Tennessee class size project, a controlled experiment which is one of the most important educational investigations ever carried out and illustrates the kind and magnitude of research needed in the field of education to strengthen schools.
