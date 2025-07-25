@@ -166,31 +166,53 @@ tibble(
 
 ### Data Generating Mechanism
 
-Fit a linear regression model in which math score (`g4math`) is the outcome, and the predictors are class type (`kind`), race, and years spent in small classes (`yearssmall`). Fit this model to an object named `fit_cs`.
+Fit a linear regression model in which math score (`g4math`) is the outcome, and the predictors are class type (`kind`), `race`, and years spent in small classes (`yearssmall`). Fit this model to an object named `fit_cs`.
 
 ```{r}
-
+fit_cs <- linear_reg() |> 
+  fit(g4math ~ kind + race + yearssmall, data = x)
 ```
 
 After fitting the model, run `fit_cs` and be sure to display the confidence intervals. 
 
 ```{r}
-
+fit_cs |> 
+  tidy(conf.int = TRUE)
 ```
 
 Give the R code you used to fit your regression model to AI and ask it to create a LaTeX version of the regression equation that matches your model. Paste the LaTeX equation from AI below.
+
+$$
+\widehat{\text{g4math}} = 695\ -\ 1.95\,
+\text{I}(\text{kind} = \text{regular with aid})\ -\ 7.66\,
+\text{I}(\text{kind} = \text{small})\ +\ 38.7\,
+\text{I}(\text{race} = \text{others})\ +\ 16.3\,
+\text{I}(\text{race} = \text{white})\ +\ 2.18\,
+\text{yearssmall}
+$$
 
 
 ## Marginal Effects
 
 Start writing summary paragraph. (AI may be helpful for individual sentences but won't give you a paragraph at once.)
 
-Generate predicted scores for all students in the data. What does each row in the output represent?
+Each row represents one student. 
+
+```{r}
+predictions(fit_cs)
+```
 
 Generate predictions by class type (`kind`). 
 
+```{r}
+predictions(fit_cs, by = "kind")
+```
+
 Visualize average predicted math score by class type using `plot_predictions()`.
 
+```{r}
+plot_predictions(fit_cs, by = "kind")
+```
 
 The default `plot_predictions()` plots can be boring or hard to read. To create your own custom plot, start by extracting the prediction data using the `draw = FALSE` option. Save the resulting tibble as `pred_data`. Run `pred_data` to see the output.
 
@@ -202,11 +224,46 @@ What does this plot tell you about the effect of class types on student `g4math`
 
 Start experimenting with more detailed plots. Visualize predicted math scores by class type and race. Just use the basic `plot_predictions()` for now.
 
+```{r}
+plot_predictions(fit_cs, by = c("kind", "race"))
+```
 
 Now use `plot_predictions()` with `draw = FALSE` to get the raw predictions by class type. Save the resulting tibble as `pred_data2`. Run `pred_data2` to see the output. 
 
+```{r}
+pred_data2 <- plot_predictions(fit_cs, by = c("kind", "race"), draw = FALSE)
+pred_data2
+```
+
 
 Take the output from `pred_data2` and provide it to AI. Ask it to make a high-quality plot with a descriptive title, subtitle, caption, and labels. Paste your new plot below: 
+
+```{r}
+pred_data2 <- pred_data2 |>
+  mutate(kind = recode(kind,
+    "regular" = "Regular (22-25 Students)",
+    "regular with aid" = "Regular with Aid",
+    "small" = "Small (13-17 Students)"
+  ))
+
+
+```{r}
+ggplot(pred_data2, aes(x = kind, y = estimate, color = race)) +
+  geom_point(position = position_dodge(width = 0.3), size = 3) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
+                position = position_dodge(width = 0.3),
+                width = 0.2) +
+  labs(title = "Fourth Grade Math Scores and Class Structure",
+       subtitle = "Class structure has no effect on math scores",
+       caption = "Data from Tennessee STAR program in 1985",
+       x = NULL,
+       y = "Math Score",
+       color = "Race") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+```
+
 
 After finalizing your summary paragraph, paste it in the section below:
 
